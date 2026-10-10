@@ -87,6 +87,13 @@ function applyCoupon(code, lines, coupons, { slot = null, now = new Date() } = {
   const coupon = coupons.find((c) => c.code.toUpperCase() === wanted);
   if (!coupon) return { valid: false, discount: 0, reason: 'Coupon not found' };
 
+  if (coupon.expiresAt !== undefined && coupon.expiresAt !== null) {
+    const expDate = new Date(coupon.expiresAt);
+    if (isNaN(expDate.getTime()) || expDate <= now) {
+      return { valid: false, discount: 0, reason: `${coupon.code} has expired` };
+    }
+  }
+
   if (coupon.usesLeft <= 0) {
     return { valid: false, discount: 0, reason: 'This coupon is fully used' };
   }

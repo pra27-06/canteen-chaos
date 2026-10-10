@@ -231,7 +231,7 @@ router.patch(
     if (!move.ok) throw conflict(move.reason, statusLogic.allowedNext(order.status));
 
     // cancelling puts the food back on the shelf and the points back in the wallet
-    if (status === 'cancelled') {
+    if (status === 'cancelled' && order.status !== 'cancelled') {
       store.writeMenu(validation.releaseStock(order.items, store.readMenu()));
 
       if (order.memberId) {

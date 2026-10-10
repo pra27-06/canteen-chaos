@@ -38,6 +38,7 @@ function validateLine(item, index, menu, now, seen) {
   if (blocked && isServedNow(dish, now) === false) errors.push(`${dish.name}: ${blocked}`);
   else if (dish.disabled) errors.push(`${dish.name} is off the menu today`);
   else if (Number(dish.stock) <= 0) errors.push(`${dish.name} is sold out`);
+  else if (qty > Number(dish.stock)) errors.push(`Only ${dish.stock} left for ${dish.name}`);
 
   return errors;
 }
@@ -103,24 +104,55 @@ function validateOrder(order, menu, { now = new Date(), orders = [] } = {}) {
  */
 function reserveStock(items, menu) {
   const errors = [];
-  const next = menu.map((d) => ({ ...d }));
+  if (!Array.isArray(items)) return { ok: false, menu, errors: ['items must be an array'] };
 
+  const demanded = new Map();
   items.forEach((item) => {
-    const dish = next.find((d) => d.id === Number(item.dishId));
-    if (!dish) return errors.push(`dish ${item.dishId} vanished`);
-    dish.stock -= item.qty;
+    if (!item) return;
+    const id = Number(item.dishId);
+    const qty = Number(item.qty) || 0;
+    if (qty > 0) {
+      demanded.set(id, (demanded.get(id) || 0) + qty);
+    }
+  });
+
+  // Pre-check all demanded quantities against menu
+  demanded.forEach((qty, id) => {
+    const dish = menu.find((d) => d.id === id);
+    if (!dish) {
+      errors.push(`dish ${id} vanished`);
+    } else if (dish.stock < qty) {
+      errors.push(`not enough stock for ${dish.name} (requested ${qty}, available ${dish.stock})`);
+    }
   });
 
   if (errors.length > 0) return { ok: false, menu, errors };
+
+  const next = menu.map((d) => {
+    const qty = demanded.get(d.id);
+    return qty ? { ...d, stock: d.stock - qty } : { ...d };
+  });
+
   return { ok: true, menu: next, errors: [] };
 }
 
 /** Put stock back when an order is cancelled. */
 function releaseStock(items, menu) {
+  if (!Array.isArray(items)) return menu;
+  const qtyByDish = new Map();
+  items.forEach((item) => {
+    if (!item) return;
+    const id = Number(item.dishId);
+    const qty = Number(item.qty) || 0;
+    if (qty > 0) {
+      qtyByDish.set(id, (qtyByDish.get(id) || 0) + qty);
+    }
+  });
+
   return menu.map((dish) => {
-    const line = items.find((i) => Number(i.dishId) === dish.id);
-    if (!line) return dish;
-    return { ...dish, stock: dish.stock - line.qty };
+    const qty = qtyByDish.get(dish.id);
+    if (!qty) return dish;
+    return { ...dish, stock: dish.stock + qty };
   });
 }
 
