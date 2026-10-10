@@ -33,17 +33,31 @@ order screen round in different places.
 
 
 
-## CC-0X — "<the complaint, in short>"
+## CC-09 — "The menu shows more dishes than it should"
 
-**Reproduced:**
+**Reproduced:** Called `/api/menu?limit=5&page=1` and `/api/menu?limit=5&page=2`. Both responses returned all dishes in the database rather than slicing them to 5 items per page. The smoke test reported `FAIL pages differ`.
 
-**Cause:**
+**Cause:** In `backend/logic/search.js`, the `paginate()` function sliced the page correctly into `items`, but returned `items: list`, returning the entire unpaginated array to the client.
 
-**Fix:**
+**Fix:** Changed `items: list` to `items` in the return object of `paginate()`.
 
-**Checked:**
+**Checked:** Queried `/api/menu?limit=5&page=1` and page 2; confirmed page 1 returns 5 items and differs from page 2. Ran `node smoke.js`, and `pages differ` passed.
 
-**Time:**
+**Time:** about 15 minutes.
+
+
+
+## CC-10 — "Sorting by price is backwards"
+
+**Reproduced:** Selected "Price: low to high" and observed highest price dishes at the top. Running `node smoke.js` reported `FAIL sort by price works`.
+
+**Cause:** In `backend/logic/search.js`, the `SORTERS` object inverted the comparators: `'price-asc'` used `(a, b) => b.price - a.price` (descending order), while `'price-desc'` used `(a, b) => a.price - b.price` (ascending order).
+
+**Fix:** Swapped the comparators in `SORTERS` so `'price-asc'` computes `a.price - b.price` and `'price-desc'` computes `b.price - a.price`.
+
+**Checked:** Tested sorting on `/api/menu?sort=price-asc` and `/api/menu?sort=price-desc`. Verified lowest price appears first on `price-asc`. Ran `node smoke.js`, and `sort by price works` passed.
+
+**Time:** about 15 minutes.
 
 
 
