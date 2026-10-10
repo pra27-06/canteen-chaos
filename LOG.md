@@ -6,56 +6,73 @@ This file is read as carefully as your code. A correct fix you cannot
 explain counts for little; a bug you could not fix but investigated
 honestly still counts for something.
 
-Delete the example before you submit.
 
 
+## CC-01 — "The search suggestions are behind everything"
 
-## Example — delete this
+**Reproduced:** Typed "ch" or "paneer" into the search bar. The suggestions dropdown rendered, but its lower half was hidden behind the category tabs (`.cat-tabs`) and could not be clicked.
 
-### CC-99 — "The cart total is wrong"
+**Cause:** In `frontend/style.css`, `.search-wrap` had `z-index: 1`, while the adjacent `.cat-tabs` element had `z-index: 40`. Because `.search-wrap` established a lower stacking context, its child `.suggest-box` was clipped/occluded by the category tab bar.
 
-**Reproduced:** Added 2 dosas at Rs. 60 each. The cart showed
-Rs. 119.99999 instead of Rs. 130. Happened every time, on any dish with
-a price ending in .50.
+**Fix:** Changed `.search-wrap` to `z-index: 50` so the entire search container and suggestions dropdown sit above `.cat-tabs` (z-index 40).
 
-**Cause:** The total was being added up with plain floating point and
-never rounded, so 0.1 + 0.2 style errors showed up on screen. The
-rounding helper existed but this one place was not using it.
-
-**Fix:** Ran the total through the existing rounding helper instead of
-adding a new one, so every price on screen goes through the same path.
-
-**Checked:** Cart, checkout and the order screen all show Rs. 130 now.
-Prices without decimals still show without a trailing .00.
-
-**Time:** about 40 minutes, most of it working out that the cart and the
-order screen round in different places.
-
-
-
-## CC-09 — "The menu shows more dishes than it should"
-
-**Reproduced:** Called `/api/menu?limit=5&page=1` and `/api/menu?limit=5&page=2`. Both responses returned all dishes in the database rather than slicing them to 5 items per page. The smoke test reported `FAIL pages differ`.
-
-**Cause:** In `backend/logic/search.js`, the `paginate()` function sliced the page correctly into `items`, but returned `items: list`, returning the entire unpaginated array to the client.
-
-**Fix:** Changed `items: list` to `items` in the return object of `paginate()`.
-
-**Checked:** Queried `/api/menu?limit=5&page=1` and page 2; confirmed page 1 returns 5 items and differs from page 2. Ran `node smoke.js`, and `pages differ` passed.
+**Checked:** Verified with regression test in `backend/test-frontend-css.js` that `.search-wrap` has `z-index >= 40`. Verified in browser that typing search terms displays the full suggestions box layered over category tabs, with all items clickable.
 
 **Time:** about 15 minutes.
 
 
 
-## CC-10 — "Sorting by price is backwards"
+## CC-02 — "Can't read anything in dark mode"
 
-**Reproduced:** Selected "Price: low to high" and observed highest price dishes at the top. Running `node smoke.js` reported `FAIL sort by price works`.
+**Reproduced:** Switched theme to dark mode using the header theme button. Dish names and prices became nearly invisible against the dark card backgrounds.
 
-**Cause:** In `backend/logic/search.js`, the `SORTERS` object inverted the comparators: `'price-asc'` used `(a, b) => b.price - a.price` (descending order), while `'price-desc'` used `(a, b) => a.price - b.price` (ascending order).
+**Cause:** In `frontend/style.css`, `.dish-body` had hardcoded `color: #2b2118;` instead of using the theme CSS variable `var(--ink)`. When `data-theme="dark"` set the card background to dark brown (`#201913`), the text remained dark brown.
 
-**Fix:** Swapped the comparators in `SORTERS` so `'price-asc'` computes `a.price - b.price` and `'price-desc'` computes `b.price - a.price`.
+**Fix:** Replaced hardcoded `color: #2b2118;` with `color: var(--ink);` in `.dish-body`.
 
-**Checked:** Tested sorting on `/api/menu?sort=price-asc` and `/api/menu?sort=price-desc`. Verified lowest price appears first on `price-asc`. Ran `node smoke.js`, and `sort by price works` passed.
+**Checked:** Verified with `backend/test-frontend-css.js` that `.dish-body` uses `var(--ink)`. Toggled between light and dark themes in browser; dish names and prices render in `#2b2118` in light mode and high-contrast `#f2e8df` in dark mode.
+
+**Time:** about 10 minutes.
+
+
+
+## CC-03 — "The menu is wider than my phone"
+
+**Reproduced:** Simulated mobile screen width (<= 480px) in browser developer tools. Long dish names (like "Paneer Butter Masala Combo with Butter Naan") prevented cards from fitting within the viewport, causing unwanted horizontal scrolling and cutting off "Add to Cart" buttons.
+
+**Cause:** In `frontend/style.css`, under `@media (max-width: 760px)`, `.name-btn` was set to `width: max-content;`, preventing dish titles from wrapping and forcing the entire grid column to expand past the screen edge.
+
+**Fix:** Changed `.name-btn` in the 760px media query to `width: 100%; text-align: left;` and constrained `.dish-card img` to `width: 100%; max-width: 100%;` so cards wrap text properly within mobile columns.
+
+**Checked:** Verified with `backend/test-frontend-css.js` that `width: max-content` is removed. Tested on 375px and 414px mobile viewports; verified dish titles wrap cleanly and cards fit within viewport without horizontal scrolling.
+
+**Time:** about 20 minutes.
+
+
+
+## CC-04 — "The buttons don't work on my tablet"
+
+**Reproduced:** Set viewport width between 761px and 900px (tablet breakpoint). Clicking "Add to Cart" or the favorite star button on any dish card had no effect.
+
+**Cause:** In `frontend/style.css`, an `@media (min-width: 761px) and (max-width: 900px)` rule created empty `::after` pseudo-elements over `.dish-card` (bottom 58px) and `.img-wrap` (top-right 52x52px) without `pointer-events: none;`, intercepting all click and tap events.
+
+**Fix:** Added `pointer-events: none;` to `.dish-card::after, .img-wrap::after` in the tablet media query so pointer events pass through directly to the underlying buttons.
+
+**Checked:** Verified with `backend/test-frontend-css.js` that `pointer-events: none` is present in the tablet media query. Tested clicks at 800px viewport; confirmed "Add to Cart" increments cart and the favorite star toggles correctly.
+
+**Time:** about 15 minutes.
+
+
+
+## CC-05 — "The category bar scrolls away on my phone"
+
+**Reproduced:** Set viewport width to <= 480px and scrolled down through the menu dishes. The `.filters` bar scrolled off screen instead of sticking to the top.
+
+**Cause:** In `frontend/style.css`, `@media (max-width: 480px)` applied `.view { overflow-x: hidden; }`. In CSS layout, `overflow-x: hidden` establishes a clipping/scroll container that breaks `position: sticky; top: 0;` on child elements during page scrolling.
+
+**Fix:** Replaced `.view { overflow-x: hidden; }` with `.view { overflow-x: clip; }`. Unlike `hidden`, `clip` prevents horizontal scroll overflow without establishing a scroll container, allowing `position: sticky` on `.filters` to stick to the viewport.
+
+**Checked:** Verified with `backend/test-frontend-css.js` that `.view { overflow-x: hidden; }` is removed. Verified in browser at 375px width that the category and filter bar remains fixed at top while scrolling the menu.
 
 **Time:** about 15 minutes.
 
@@ -103,24 +120,37 @@ order screen round in different places.
 
 
 
-## Could not fix
+## CC-09 — "The menu shows more dishes than it should"
 
-For anything you investigated but did not solve. Say what you tried and
-where you got to. This is worth marks — leaving it blank when you got
-stuck is not.
+**Reproduced:** Called `/api/menu?limit=5&page=1` and `/api/menu?limit=5&page=2`. Both responses returned all dishes in the database rather than slicing them to 5 items per page. The smoke test reported `FAIL pages differ`.
 
-### CC-0X — "<the complaint>"
+**Cause:** In `backend/logic/search.js`, the `paginate()` function sliced the page correctly into `items`, but returned `items: list`, returning the entire unpaginated array to the client.
 
-**What I tried:**
+**Fix:** Changed `items: list` to `items` in the return object of `paginate()`.
 
-**Where I got to:**
+**Checked:** Queried `/api/menu?limit=5&page=1` and page 2; confirmed page 1 returns 5 items and differs from page 2. Ran `node smoke.js`, and `pages differ` passed.
 
-**What I would try next:**
+**Time:** about 15 minutes.
+
+
+
+## CC-10 — "Sorting by price is backwards"
+
+**Reproduced:** Selected "Price: low to high" and observed highest price dishes at the top. Running `node smoke.js` reported `FAIL sort by price works`.
+
+**Cause:** In `backend/logic/search.js`, the `SORTERS` object inverted the comparators: `'price-asc'` used `(a, b) => b.price - a.price` (descending order), while `'price-desc'` used `(a, b) => a.price - b.price` (ascending order).
+
+**Fix:** Swapped the comparators in `SORTERS` so `'price-asc'` computes `a.price - b.price` and `'price-desc'` computes `b.price - a.price`.
+
+**Checked:** Tested sorting on `/api/menu?sort=price-asc` and `/api/menu?sort=price-desc`. Verified lowest price appears first on `price-asc`. Ran `node smoke.js`, and `sort by price works` passed.
+
+**Time:** about 15 minutes.
 
 
 
 ## Extra credit
 
-Anything not on the bug log: a problem you found yourself, a test you
-wrote, or a fix you are unsure about. Same format, plus one line on how
-you noticed it.
+### Regression Test Suites Added
+Wrote two dedicated automated regression test scripts under `backend/`:
+1. `backend/test-backend-bugs.js`: Deterministically validates logic for CC-06 (stock validation, atomic reservation failure, duplicate demand aggregation), CC-07 (stock restoration on cancellation, idempotent cancellation), CC-08 (coupon expiry date edge cases: expired, active, missing, malformed), and CC-09/CC-10 (pagination and price sorting comparators).
+2. `backend/test-frontend-css.js`: Validates CSS rules for CC-01 through CC-05 against regressions in stacking order, dark mode theming, button wrapping, tablet pointer events, and sticky filter preservation.
